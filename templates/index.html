@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Maps Multiple Destinations</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        #map {
+            height: 80%;
+            width: 100%;
+        }
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #inputs {
+            margin: 20px;
+        }
+        #results {
+            margin: 20px;
+        }
+        .toll-item {
+            margin-bottom: 4px;
+        }
+    </style>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAgIwoNsnI4JVgb-jGacBcRLiOd9JMLtRs&libraries=places"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4">
+        <div id="inputs" class="bg-white shadow-md rounded-lg p-6 mb-6 transition-all shadow-lg-hover">
+            <h5 class="text-xl font-bold mb-4">Planificador de Rutas</h5>
+            <div class="mb-4">
+                <label for="origin" class="block text-sm font-medium text-gray-700">Origen</label>
+                <input id="origin" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50 transition-all" placeholder="Origen">
+            </div>
+            <div class="mb-4">
+                <label for="destination" class="block text-sm font-medium text-gray-700">Destino Final</label>
+                <input id="destination" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50 transition-all" placeholder="Destino final">
+            </div>
+            <div class="mb-4">
+                <label for="num_waypoints" class="block text-sm font-medium text-gray-700">Número de Waypoints</label>
+                <input id="num_waypoints" type="number" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50 transition-all" placeholder="Número de waypoints" min="0">
+            </div>
+            <div class="mb-4">
+                <label for="travel_mode" class="block text-sm font-medium text-gray-700">Modo de Viaje</label>
+                <select id="travel_mode" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50 transition-all">
+                    <option value="DRIVING">Carro</option>
+                    <option value="BICYCLING">Bicicleta</option>
+                    <option value="WALKING">Caminando</option>
+                </select>
+            </div>
+            <button onclick="generateWaypointInputs()" class="bg-blue-500 text-white px-4 py-2 rounded-md shadow-sm hover:bg-blue-600 mb-4 transition-all">Generar campos de waypoints</button>
+            <div id="waypoint_inputs" class="mb-4"></div>
+            <button onclick="calculateRoute()" class="bg-green-500 text-white px-4 py-2 rounded-md shadow-sm hover:bg-green-600 transition-all">Calcular Ruta</button>
+        </div>
+        <div id="results" class="bg-white shadow-md rounded-lg p-6 transition-all shadow-lg-hover">
+            <h5 class="text-xl font-bold mb-4">Resultados</h5>
+            <p id="distance" class="mb-2"></p>
+            <p id="duration" class="mb-2"></p>
+            <p id="fuel_cost" class="mb-2"></p>
+            <p id="toll_cost" class="mb-2"></p>
+            <p id="total_cost" class="mb-2"></p>
+            <div id="toll_booths" class="mb-2"></div>
+        </div>
+    </div>
+    <div id="map"></div>
+    <script>
+        let map;
+        let directionsService;
+        let directionsRenderer;
+        let waypointsData = [];
+
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 6,
+                center: { lat: 19.432608, lng: -99.133209 } // Ciudad de México
+            });
+
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer({
+                map: map
+            });
+        }
+
+        function generateWaypointInputs() {
+            const numWaypoints = document.getElementById('num_waypoints').value;
+            const waypointContainer = document.getElementById('waypoint_inputs');
+            waypointContainer.innerHTML = '';
+
+            for (let i = 0; i < numWaypoints; i++) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50 mb-2 transition-all';
+                input.placeholder = `Waypoint ${i + 1}`;
+                input.id = `waypoint${i + 1}`;
+                waypointContainer.appendChild(input);
+            }
+        }
+
+        function calculateRoute() {
+            const origin = document.getElementById('origin').value;
+            const destination = document.getElementById('destination').value;
+            const numWaypoints = document.getElementById('num_waypoints').value;
+            const travelMode = document.getElementById('travel_mode').value;
+
+            waypointsData = [];
+            const waypoints = [];
+            for (let i = 0; i < numWaypoints; i++) {
+                const waypoint = document.getElementById(`waypoint${i + 1}`).value;
+                if (waypoint) {
+                    waypoints.push({ location: waypoint, stopover: true });
+                    waypointsData.push(waypoint);
+                }
+            }
+
+            const request = {
+                origin: origin,
+                destination: destination,
+                waypoints: waypoints,
+                travelMode: travelMode
+            };
+
+            directionsService.route(request, function (result, status) {
+                if (status === 'OK') {
+                    directionsRenderer.setDirections(result);
+
+                    const totalDistance = result.routes[0].legs.reduce((sum, leg) => sum + leg.distance.value, 0) / 1000;  // en kilómetros
+                    const totalDuration = result.routes[0].legs.reduce((sum, leg) => sum + leg.duration.value, 0);  // en segundos
+                    const totalHours = Math.floor(totalDuration / 3600);
+                    const totalMinutes = Math.floor((totalDuration % 3600) / 60);
+
+                    fetch('/get_directions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            origin: origin,
+                            destination: destination,
+                            waypoints: waypointsData,
+                            travel_mode: travelMode
+                        })
+                    }).then(response => response.json())
+                      .then(data => {
+                          document.getElementById('distance').innerText = `Distancia total: ${data.total_distance.toFixed(2)} km`;
+                          document.getElementById('duration').innerText = `Duración total: ${data.total_duration}`;
+                          document.getElementById('fuel_cost').innerText = `Costo total de la gasolina: $${data.total_fuel_cost.toFixed(2)}`;
+                          document.getElementById('toll_cost').innerText = `Costo total de las casetas: $${data.total_toll_cost.toFixed(2)}`;
+                          document.getElementById('total_cost').innerText = `Costo total del viaje: $${data.total_trip_cost.toFixed(2)}`;
+
+                          fetch('/get_toll_locations', {
+                              method: 'POST',
+                              headers: {
+                                  'Content-Type': 'application/json'
+                              },
+                              body: JSON.stringify({
+                                  origin: origin,
+                                  destination: destination,
+                                  waypoints: waypointsData
+                              })
+                          }).then(response => response.json())
+                            .then(tollLocations => {
+                                if (tollLocations.length > 0) {
+                                    const tollBoothsDiv = document.getElementById('toll_booths');
+                                    tollBoothsDiv.innerHTML = '<h5 class="text-xl font-bold mb-4">Casetas Utilizadas</h5>';
+
+                                    tollLocations.forEach(toll => {
+                                        const marker = new google.maps.Marker({
+                                            position: toll.location,
+                                            map: map,
+                                            title: toll.name,
+                                            icon: {
+                                                url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+                                            }
+                                        });
+
+                                        const tollInfo = document.createElement('p');
+                                        tollInfo.innerText = `${toll.name} - Latitud: ${toll.location.lat}, Longitud: ${toll.location.lng}`;
+                                        tollBoothsDiv.appendChild(tollInfo);
+                                    });
+                                }
+                            });
+                      });
+                } else {
+                    console.error('Directions request failed due to ' + status);
+                }
+            });
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
